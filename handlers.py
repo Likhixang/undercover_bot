@@ -1661,8 +1661,16 @@ async def speech_watchdog_loop() -> None:
                             await _send_temp(chat_id, tip, thread_id)
                             await svc.refund_all_stakes(scope)
                             await svc.destroy_room(scope)
+                            panel_id = await redis.get(_panel_key(scope))
+                            trigger_id = await redis.get(_trigger_key(scope))
                             await redis.delete(_panel_key(scope))
                             await redis.delete(_vote_result_key(scope))
+                            await redis.delete(_trigger_key(scope))
+                            for msg_id in filter(None, [panel_id, trigger_id]):
+                                try:
+                                    await bot.delete_message(chat_id=chat_id, message_id=int(msg_id))
+                                except Exception:
+                                    pass
                     continue
 
                 for pending in await svc.pending_blank_guess_players(scope):
