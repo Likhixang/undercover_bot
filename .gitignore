@@ -1,0 +1,22 @@
+# Secrets
+.env
+.secrets/
+
+# Local agent data
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Databases and backups
+*.db
+backup.db
+redis_data/
+
+# IDE
+.vscode/
+.idea/
