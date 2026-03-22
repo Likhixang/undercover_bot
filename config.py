@@ -5,7 +5,7 @@ if not TOKEN:
     raise ValueError("BOT_TOKEN missing")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://axon.khixang.dpdns.org/v1").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://axon.khixang.cc.cd/v1").strip()
 
 RUN_MODE = os.getenv("RUN_MODE", "polling").strip().lower()
 WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "").strip()

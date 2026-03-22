@@ -423,7 +423,8 @@ async def _set_speaker_deadline(scope: str, seconds: int = SPEAK_TIMEOUT_SECONDS
 
 async def _track_speaker_prompt(scope: str, message_id: int) -> None:
     await redis.sadd(_speaker_prompt_set_key(scope), str(message_id))
-    await redis.set(_speaker_prompt_key(scope), str(message_id))
+    await redis.expire(_speaker_prompt_set_key(scope), SPEAK_TIMEOUT_SECONDS * 3)
+    await redis.set(_speaker_prompt_key(scope), str(message_id), ex=SPEAK_TIMEOUT_SECONDS * 3)
 
 
 async def _clear_speaker_prompts(scope: str, chat_id: int) -> None:
@@ -432,13 +433,15 @@ async def _clear_speaker_prompts(scope: str, chat_id: int) -> None:
     if current_id:
         prompt_ids.add(str(current_id))
 
+    logger.info("_clear_speaker_prompts scope=%s chat_id=%s prompt_ids=%s", scope, chat_id, prompt_ids)
     for prompt_id in prompt_ids:
         if not prompt_id or not str(prompt_id).isdigit():
+            logger.info("_clear_speaker_prompts skip invalid prompt_id=%r", prompt_id)
             continue
         try:
             await bot.delete_message(chat_id=chat_id, message_id=int(prompt_id))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info("_clear_speaker_prompts delete failed prompt_id=%s: %s", prompt_id, e)
 
     await redis.delete(_speaker_prompt_key(scope))
     await redis.delete(_speaker_prompt_set_key(scope))
@@ -469,10 +472,19 @@ async def _snapshot_review_context(scope: str) -> tuple[list[tuple[str, str]], d
     return logs, {p.uid: p.name for p in players}
 
 
-async def _finalize_scope(scope: str, chat_id: int, thread_id: int | None) -> None:
+async def _finalize_scope(scope: str, chat_id: int, thread_id: int | None, summary_text: str = "") -> None:
     await _cleanup_scope_transient_messages(scope, chat_id)
+    # Delete old panel before destroying room
+    panel_id = await redis.get(_panel_key(scope))
+    if panel_id:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=int(panel_id))
+        except Exception:
+            pass
+        await redis.delete(_panel_key(scope))
     await svc.destroy_room(scope)
-    await _render_panel(scope, chat_id, thread_id)
+    if summary_text:
+        await bot.send_message(chat_id, summary_text, message_thread_id=thread_id)
 
 
 async def _announce_current_speaker(scope: str, tip: str = "") -> None:
@@ -511,6 +523,7 @@ async def _announce_current_speaker(scope: str, tip: str = "") -> None:
     try:
         sent = await bot.send_message(chat_id, text, message_thread_id=thread_id)
         await _track_speaker_prompt(scope, sent.message_id)
+        asyncio.create_task(_delete_message_later(chat_id, sent.message_id, SPEAK_TIMEOUT_SECONDS + 30))
     except Exception:
         await redis.delete(guard_key)
         raise
@@ -926,9 +939,8 @@ async def _finish_game(
     summary_text: str,
 ) -> None:
     review_logs, review_names = await _snapshot_review_context(scope)
-    await _send_temp(chat_id, summary_text, thread_id, delay=60)
     asyncio.create_task(_send_ai_review(scope, chat_id, thread_id, review_logs, review_names))
-    await _finalize_scope(scope, chat_id, thread_id)
+    await _finalize_scope(scope, chat_id, thread_id, summary_text)
 
 
 async def _handle_speech_submit(scope: str, uid: int, name: str, content: str, reply_to: types.Message) -> None:
