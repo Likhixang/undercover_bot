@@ -1,9 +1,9 @@
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:alpine
     container_name: undercover_redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "undercover_redis_pass"]
     volumes:
       - redis_data:/data
 
